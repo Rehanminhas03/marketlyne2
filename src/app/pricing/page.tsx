@@ -139,15 +139,15 @@ const processItems = [
 
 // Comparison table data
 const comparisonRows = [
-  { feature: "Subscription Cost", marketlyn: "$399 - $999 one-time fee", competitor1: "$200+/month*, up to $1000+/month*", competitor2: "$150 per referral*" },
-  { feature: "Referral Exclusivity", marketlyn: "Exclusive referrals", competitor1: "Varies with subscription tier", competitor2: "First-come, first-served" },
-  { feature: "Consistent Pricing", marketlyn: "Stable rates", competitor1: "Interest and market-driven variability", competitor2: "Sort by property costs and area competition" },
-  { feature: "Preferred Area Selection", marketlyn: "Scheduled appts from your zip codes", competitor1: "Agents can purchase exclusive zip codes", competitor2: "Limited due to high competition" },
-  { feature: "Referral Generation", marketlyn: "Geo-targeted campaigns on multiple platforms", competitor1: "Campaigns across various platforms", competitor2: "Listings/ads on own/other platforms" },
-  { feature: "Contact Confirmation", marketlyn: true, competitor1: false, competitor2: true },
-  { feature: "Referral Distribution Priority", marketlyn: "Exclusive to you", competitor1: "Referrals placed in a pool for agents in that area", competitor2: "Referrals placed in a pool for agents in that area" },
-  { feature: "Customized Advertising Campaigns", marketlyn: true, competitor1: false, competitor2: "Available at an extra cost" },
-  { feature: "SEO Optimized Agent Profile", marketlyn: "Included (MarketEdge & ClosePoint)", competitor1: false, competitor2: false },
+  { feature: "Subscription Cost", marketlyne: "$399 - $999 one-time fee", competitor1: "$200+/month*, up to $1000+/month*", competitor2: "$150 per referral*" },
+  { feature: "Referral Exclusivity", marketlyne: "Exclusive referrals", competitor1: "Varies with subscription tier", competitor2: "First-come, first-served" },
+  { feature: "Consistent Pricing", marketlyne: "Stable rates", competitor1: "Interest and market-driven variability", competitor2: "Sort by property costs and area competition" },
+  { feature: "Preferred Area Selection", marketlyne: "Scheduled appts from your zip codes", competitor1: "Agents can purchase exclusive zip codes", competitor2: "Limited due to high competition" },
+  { feature: "Referral Generation", marketlyne: "Geo-targeted campaigns on multiple platforms", competitor1: "Campaigns across various platforms", competitor2: "Listings/ads on own/other platforms" },
+  { feature: "Contact Confirmation", marketlyne: true, competitor1: false, competitor2: true },
+  { feature: "Referral Distribution Priority", marketlyne: "Exclusive to you", competitor1: "Referrals placed in a pool for agents in that area", competitor2: "Referrals placed in a pool for agents in that area" },
+  { feature: "Customized Advertising Campaigns", marketlyne: true, competitor1: false, competitor2: "Available at an extra cost" },
+  { feature: "SEO Optimized Agent Profile", marketlyne: "Included (MarketEdge & ClosePoint)", competitor1: false, competitor2: false },
 ];
 
 // CRM Add-on pricing
@@ -880,14 +880,14 @@ export default function PricingPage() {
                   <tr key={idx} className="border-b border-white/5">
                     <td className="py-4 px-4 text-white/60">{row.feature}</td>
                     <td className="py-4 px-4 text-center">
-                      {typeof row.marketlyn === "boolean" ? (
-                        row.marketlyn ? (
+                      {typeof row.marketlyne === "boolean" ? (
+                        row.marketlyne ? (
                           <IconCheck className="w-5 h-5 text-[#d5b367] mx-auto" />
                         ) : (
                           <IconX className="w-5 h-5 text-white/30 mx-auto" />
                         )
                       ) : (
-                        <span className="text-white text-sm">{row.marketlyn}</span>
+                        <span className="text-white text-sm">{row.marketlyne}</span>
                       )}
                     </td>
                     <td className="py-4 px-4 text-center">

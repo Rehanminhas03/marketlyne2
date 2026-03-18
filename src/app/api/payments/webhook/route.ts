@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
     // Verify webhook signature
     if (webhookSignatureKey) {
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://re.marketlyn.com";
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://re.marketlyne.com";
       const notificationUrl = `${baseUrl.replace(/\/+$/, "")}/api/payments/webhook`;
       const isValid = verifyWebhookSignature(notificationUrl, rawBody, signature, webhookSignatureKey);
       if (!isValid) {
