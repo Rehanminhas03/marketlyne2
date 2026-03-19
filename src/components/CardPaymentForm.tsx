@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   PayPalScriptProvider,
   PayPalCardFieldsProvider,
@@ -9,7 +9,6 @@ import {
   usePayPalCardFields,
   usePayPalScriptReducer,
   FUNDING,
-  SCRIPT_LOADING_STATE,
 } from "@paypal/react-paypal-js";
 import { IconLoader2, IconLock, IconCreditCard } from "@tabler/icons-react";
 
@@ -157,7 +156,7 @@ function PaymentOptions({
         <div className="flex-1 h-px bg-white/10" />
       </div>
 
-      {/* PayPal Button */}
+      {/* PayPal Button — uses its OWN createOrder to avoid sharing an order with card fields */}
       <PayPalButtons
         fundingSource={FUNDING.PAYPAL}
         createOrder={createOrder}
@@ -191,8 +190,12 @@ export default function CardPaymentForm({
   onError,
 }: PaymentFormProps) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+  // Guard against double-capture (e.g., both onApprove handlers firing)
+  const capturedRef = useRef(false);
 
   const createOrder = useCallback(async () => {
+    // Reset capture guard when a new order is created
+    capturedRef.current = false;
     const response = await fetch("/api/payments/create-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -207,6 +210,13 @@ export default function CardPaymentForm({
 
   const captureOrder = useCallback(
     async (orderID: string) => {
+      // Prevent double-capture
+      if (capturedRef.current) {
+        console.warn("[CardPayment] Capture already in progress or completed — skipping duplicate");
+        return;
+      }
+      capturedRef.current = true;
+
       const response = await fetch("/api/payments/capture-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -222,6 +232,7 @@ export default function CardPaymentForm({
           orderId: result.orderId,
         });
       } else {
+        capturedRef.current = false; // Allow retry on failure
         onError(result.error || "Payment verification failed.");
       }
     },

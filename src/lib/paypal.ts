@@ -447,11 +447,24 @@ export const captureAndVerifyOrder = async (orderId: string): Promise<PaymentVer
   const ordersController = new OrdersController(client);
 
   try {
-    const captureResponse = await ordersController.captureOrder({
-      id: orderId,
-      prefer: "return=representation",
-    });
-    const order = captureResponse.result;
+    let order;
+    try {
+      const captureResponse = await ordersController.captureOrder({
+        id: orderId,
+        prefer: "return=representation",
+      });
+      order = captureResponse.result;
+    } catch (captureError: unknown) {
+      // If already captured, fetch the order instead of failing
+      const errMessage = captureError instanceof Error ? captureError.message : String(captureError);
+      if (errMessage.includes("ORDER_ALREADY_CAPTURED") || errMessage.includes("UNPROCESSABLE_ENTITY")) {
+        console.warn(`[PayPal] Order ${orderId} already captured — fetching existing order`);
+        const getResponse = await ordersController.getOrder({ id: orderId });
+        order = getResponse.result;
+      } else {
+        throw captureError;
+      }
+    }
 
     if (!order) {
       return { verified: false, plan: "", includeCRM: false, totalAmount: 0, orderId };
