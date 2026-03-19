@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -88,14 +88,39 @@ interface FormData {
   sameAsBilling: boolean;
 }
 
-export default function OnboardingPage() {
+function OnboardingContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Try URL params first, fall back to sessionStorage backup (set by payment-success page)
-  const tokenFromUrl = searchParams.get("token") || (typeof window !== "undefined" ? sessionStorage.getItem("onboarding_token") : null);
-  const planFromUrl = searchParams.get("plan") || (typeof window !== "undefined" ? sessionStorage.getItem("onboarding_plan") : null) || "";
-  const crmFromUrl = (searchParams.get("crm") || (typeof window !== "undefined" ? sessionStorage.getItem("onboarding_crm") : null)) === "true";
+  // Get params from URL first
+  const urlToken = searchParams.get("token");
+  const urlPlan = searchParams.get("plan");
+  const urlCrm = searchParams.get("crm");
+
+  // Resolve token/plan/crm from URL or sessionStorage (populated in useEffect to avoid hydration mismatch)
+  const [tokenFromUrl, setTokenFromUrl] = useState<string | null>(urlToken);
+  const [planFromUrl, setPlanFromUrl] = useState(urlPlan || "");
+  const [crmFromUrl, setCrmFromUrl] = useState(urlCrm === "true");
+
+  // Hydrate from sessionStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    try {
+      if (!urlToken) {
+        const stored = sessionStorage.getItem("onboarding_token");
+        if (stored) setTokenFromUrl(stored);
+      }
+      if (!urlPlan) {
+        const stored = sessionStorage.getItem("onboarding_plan");
+        if (stored) setPlanFromUrl(stored);
+      }
+      if (!urlCrm) {
+        const stored = sessionStorage.getItem("onboarding_crm");
+        if (stored === "true") setCrmFromUrl(true);
+      }
+    } catch {
+      // sessionStorage unavailable
+    }
+  }, [urlToken, urlPlan, urlCrm]);
 
   const [formData, setFormData] = useState<FormData>({
     firstName: "",
@@ -111,7 +136,7 @@ export default function OnboardingPage() {
     secondaryArea: "",
     secondaryRadius: "",
     accountManager: "",
-    selectedPlan: planFromUrl,
+    selectedPlan: urlPlan || "",
     billingAddress: "",
     shippingAddress: "",
     sameAsBilling: false,
@@ -253,14 +278,18 @@ export default function OnboardingPage() {
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Submission failed");
+        alert(data.error || "There was an error submitting your form. Please try again.");
+        setIsSubmitting(false);
+        return;
       }
 
       setIsSubmitted(true);
     } catch (error) {
       console.error("Error submitting form:", error);
-      alert("There was an error submitting your form. Please try again.");
+      alert("Unable to connect to the server. Please check your internet connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -978,5 +1007,24 @@ export default function OnboardingPage() {
 
       <Footer />
     </div>
+  );
+}
+
+function OnboardingLoading() {
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="flex items-center gap-2 text-white/50">
+        <IconLoader2 className="w-6 h-6 animate-spin" />
+        <span>Loading...</span>
+      </div>
+    </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<OnboardingLoading />}>
+      <OnboardingContent />
+    </Suspense>
   );
 }

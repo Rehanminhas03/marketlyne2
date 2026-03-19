@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createCheckoutLink } from "@/lib/paypal";
+import { createOrderForCardPayment } from "@/lib/paypal";
 import { isValidPlan } from "@/config/prices";
 
 export async function POST(request: NextRequest) {
@@ -7,7 +7,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { plan, includeCRM = false } = body;
 
-    // Validate plan
     if (!plan || typeof plan !== "string") {
       return NextResponse.json(
         { error: "Plan is required" },
@@ -22,7 +21,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check PayPal configuration
     if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
       console.error("PayPal credentials not configured");
       return NextResponse.json(
@@ -31,33 +29,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create PayPal checkout order
-    const { checkoutUrl, orderId } = await createCheckoutLink(
+    const { orderId } = await createOrderForCardPayment(
       plan.toLowerCase(),
       Boolean(includeCRM)
     );
 
-    console.log(`[Checkout] Plan: ${plan}, SiteURL: ${process.env.NEXT_PUBLIC_SITE_URL}, OrderId: ${orderId}`);
+    console.log(`[CreateOrder] Plan: ${plan}, CRM: ${includeCRM}, OrderId: ${orderId}`);
 
-    return NextResponse.json({
-      success: true,
-      checkoutUrl,
-      orderId,
-    });
+    return NextResponse.json({ orderId });
   } catch (error) {
-    console.error("Error creating checkout:", error);
-
-    if (error instanceof Error) {
-      if (error.message.includes("CLIENT_ID") || error.message.includes("CLIENT_SECRET")) {
-        return NextResponse.json(
-          { error: "Payment system configuration error. Please contact support." },
-          { status: 500 }
-        );
-      }
-    }
-
+    console.error("Error creating order:", error);
     return NextResponse.json(
-      { error: "Failed to create checkout session. Please try again." },
+      { error: "Failed to create order. Please try again." },
       { status: 500 }
     );
   }

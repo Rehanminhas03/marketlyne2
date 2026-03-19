@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyPayment } from "@/lib/square";
+import { verifyPayment, getOrderStatus } from "@/lib/paypal";
 import { generateAccessToken } from "@/lib/payment-tokens";
 
 export async function POST(request: NextRequest) {
@@ -15,16 +15,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check Square configuration
-    if (!process.env.SQUARE_ACCESS_TOKEN) {
-      console.error("Square credentials not configured");
+    // Check PayPal configuration
+    if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
+      console.error("PayPal credentials not configured");
       return NextResponse.json(
         { error: "Payment verification service is not configured." },
         { status: 500 }
       );
     }
 
-    // Verify payment with Square
+    // Capture and verify payment with PayPal
     const verificationResult = await verifyPayment(orderId);
 
     if (!verificationResult.verified) {
@@ -75,8 +75,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check Square configuration
-  if (!process.env.SQUARE_ACCESS_TOKEN) {
+  // Check PayPal configuration
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
     return NextResponse.json(
       { error: "Payment verification service is not configured." },
       { status: 500 }
@@ -84,15 +84,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const verificationResult = await verifyPayment(orderId);
+    // Read-only check — does NOT attempt to capture the order
+    const status = await getOrderStatus(orderId);
 
     return NextResponse.json({
-      verified: verificationResult.verified,
-      plan: verificationResult.plan,
-      includeCRM: verificationResult.includeCRM,
+      verified: status.verified,
+      plan: status.plan,
+      includeCRM: status.includeCRM,
     });
   } catch (error) {
-    console.error("Error verifying payment:", error);
+    console.error("Error checking order status:", error);
     return NextResponse.json(
       { verified: false, error: "Verification failed" },
       { status: 500 }

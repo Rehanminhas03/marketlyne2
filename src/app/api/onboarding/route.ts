@@ -2,19 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { appendToGoogleSheet } from "@/lib/google-sheets";
 import { verifyAccessToken } from "@/lib/payment-tokens";
+import { getPlanDisplayName, formatPrice, getPlanPrice } from "@/config/prices";
 
 // Track consumed tokens to prevent duplicate onboarding submissions
 // Uses JWT jti (unique ID) — survives within a warm serverless instance
 const consumedTokens = new Set<string>();
 
-// Plan display names
-const PLAN_NAMES: Record<string, string> = {
-  dealflow: "$399 — Dealflow",
-  marketedge: "$699 — MarketEdge",
-  closepoint: "$999 — ClosePoint",
-  core: "$2,695 — Core (up to 5 agents)",
-  scale: "$3,899 — Scale (up to 10 agents)",
+// Build plan display string dynamically from centralized pricing
+const getPlanLabel = (plan: string, includeCRM: boolean = false): string => {
+  const name = getPlanDisplayName(plan);
+  const price = formatPrice(getPlanPrice(plan, false));
+  const label = `${price} — ${name}`;
+  return includeCRM ? `${label} + CRM` : label;
 };
+
+// Escape HTML to prevent XSS in email templates
+const escapeHtml = (str: string): string =>
+  str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 // Radius display names
 const RADIUS_NAMES: Record<string, string> = {
@@ -76,6 +80,23 @@ export async function POST(request: NextRequest) {
       includeCRM,
     } = body;
 
+    // Escaped versions for safe HTML email interpolation
+    const safe = {
+      firstName: escapeHtml(firstName || ""),
+      lastName: escapeHtml(lastName || ""),
+      email: escapeHtml(email || ""),
+      phone: escapeHtml(phone || ""),
+      mls: escapeHtml(mls || ""),
+      licenseNumber: escapeHtml(licenseNumber || ""),
+      city: escapeHtml(city || ""),
+      state: escapeHtml(state || ""),
+      primaryArea: escapeHtml(primaryArea || ""),
+      secondaryArea: escapeHtml(secondaryArea || ""),
+      accountManager: escapeHtml(accountManager || ""),
+      billingAddress: escapeHtml(billingAddress || ""),
+      shippingAddress: escapeHtml(shippingAddress || ""),
+    };
+
     // Validate required fields
     const requiredFields = [
       { field: firstName, name: "First name" },
@@ -130,7 +151,7 @@ export async function POST(request: NextRequest) {
       secondaryArea || "",
       secondaryRadius ? (RADIUS_NAMES[secondaryRadius] || secondaryRadius) : "",
       accountManager || "",
-      PLAN_NAMES[selectedPlan] || selectedPlan,
+      getPlanLabel(selectedPlan, includeCRM),
       billingAddress,
       shippingAddress,
       includeCRM ? "Yes" : "No",
@@ -161,14 +182,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const planDisplayName = PLAN_NAMES[selectedPlan] || selectedPlan;
+    const planDisplayName = getPlanLabel(selectedPlan, includeCRM);
     const crmNote = includeCRM ? " + CRM Add-on ($99)" : "";
 
     // Admin notification email
     const adminMailOptions = {
       from: process.env.EMAIL_USER,
       to: process.env.EMAIL_USER, // Send to the same email (jerryfrancis465@gmail.com)
-      subject: `New Onboarding Submission: ${firstName} ${lastName} - ${planDisplayName}`,
+      subject: `New Onboarding Submission: ${safe.firstName} ${safe.lastName} - ${planDisplayName}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
           <div style="background: linear-gradient(135deg, #d5b367, #c9a555); padding: 20px; border-radius: 10px 10px 0 0;">
@@ -188,23 +209,23 @@ export async function POST(request: NextRequest) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold; width: 150px;">Name:</td>
-                <td style="padding: 8px 0; color: #333;">${firstName} ${lastName}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.firstName} ${safe.lastName}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td>
-                <td style="padding: 8px 0;"><a href="mailto:${email}" style="color: #d5b367;">${email}</a></td>
+                <td style="padding: 8px 0;"><a href="mailto:${safe.email}" style="color: #d5b367;">${safe.email}</a></td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Phone:</td>
-                <td style="padding: 8px 0; color: #333;"><a href="tel:${phone}" style="color: #d5b367;">${phone}</a></td>
+                <td style="padding: 8px 0; color: #333;"><a href="tel:${safe.phone}" style="color: #d5b367;">${safe.phone}</a></td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">MLS:</td>
-                <td style="padding: 8px 0; color: #333;">${mls}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.mls}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">License Number:</td>
-                <td style="padding: 8px 0; color: #333;">${licenseNumber}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.licenseNumber}</td>
               </tr>
             </table>
 
@@ -213,11 +234,11 @@ export async function POST(request: NextRequest) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold; width: 150px;">City:</td>
-                <td style="padding: 8px 0; color: #333;">${city}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.city}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">State:</td>
-                <td style="padding: 8px 0; color: #333;">${state}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.state}</td>
               </tr>
             </table>
 
@@ -226,20 +247,20 @@ export async function POST(request: NextRequest) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold; width: 150px;">Primary Area:</td>
-                <td style="padding: 8px 0; color: #333;">${primaryArea}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.primaryArea}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Primary Radius:</td>
-                <td style="padding: 8px 0; color: #333;">${RADIUS_NAMES[primaryRadius] || primaryRadius}</td>
+                <td style="padding: 8px 0; color: #333;">${RADIUS_NAMES[primaryRadius] || escapeHtml(primaryRadius || "")}</td>
               </tr>
               ${secondaryArea ? `
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Secondary Area:</td>
-                <td style="padding: 8px 0; color: #333;">${secondaryArea}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.secondaryArea}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Secondary Radius:</td>
-                <td style="padding: 8px 0; color: #333;">${RADIUS_NAMES[secondaryRadius] || secondaryRadius || "Not specified"}</td>
+                <td style="padding: 8px 0; color: #333;">${RADIUS_NAMES[secondaryRadius] || escapeHtml(secondaryRadius || "") || "Not specified"}</td>
               </tr>
               ` : ""}
             </table>
@@ -259,7 +280,7 @@ export async function POST(request: NextRequest) {
               ` : ""}
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold;">Account Manager:</td>
-                <td style="padding: 8px 0; color: #333;">${accountManager || "Not assigned"}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.accountManager || "Not assigned"}</td>
               </tr>
             </table>
 
@@ -268,11 +289,11 @@ export async function POST(request: NextRequest) {
             <table style="width: 100%; border-collapse: collapse;">
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold; width: 150px; vertical-align: top;">Billing Address:</td>
-                <td style="padding: 8px 0; color: #333;">${billingAddress.replace(/\n/g, "<br>")}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.billingAddress.replace(/\n/g, "<br>")}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 0; color: #666; font-weight: bold; vertical-align: top;">Shipping Address:</td>
-                <td style="padding: 8px 0; color: #333;">${shippingAddress.replace(/\n/g, "<br>")}</td>
+                <td style="padding: 8px 0; color: #333;">${safe.shippingAddress.replace(/\n/g, "<br>")}</td>
               </tr>
             </table>
 
@@ -297,7 +318,7 @@ export async function POST(request: NextRequest) {
 
           <div style="background-color: #ffffff; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-              Hi ${firstName},
+              Hi ${safe.firstName},
             </p>
 
             <p style="color: #555; line-height: 1.6;">
@@ -329,7 +350,7 @@ export async function POST(request: NextRequest) {
             </div>
 
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #999; font-size: 12px;">
-              <p>Best regards,<br>The Marketlynee Team</p>
+              <p>Best regards,<br>The Marketlyne Team</p>
               <p style="margin-top: 10px;">
                 <a href="mailto:support@marketlyne.com" style="color: #d5b367;">support@marketlyne.com</a> |
                 <a href="tel:+13073107054" style="color: #d5b367;">+1 (307) 310-7054</a>

@@ -47,6 +47,11 @@ import {
 } from "@tabler/icons-react";
 import siteConfig from "@/config/site.json";
 import { getPlanPrice, formatPrice, CRM_ADDON_PRICE } from "@/config/prices";
+import dynamic from "next/dynamic";
+
+const CardPaymentForm = dynamic(() => import("@/components/CardPaymentForm"), {
+  ssr: false,
+});
 
 // Logo data for marquee
 const brokerageLogos = [
@@ -428,7 +433,6 @@ export default function PricingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState<string | null>(null);
   const [reviewModal, setReviewModal] = useState<{
     isOpen: boolean;
     planName: string;
@@ -478,28 +482,23 @@ export default function PricingPage() {
   useEffect(() => {
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
-        setIsCheckoutLoading(null);
         closeReviewModal();
       }
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        // If we were mid-checkout when the page became hidden, reset on return
         const wasInCheckout = sessionStorage.getItem("payment_in_progress");
         if (wasInCheckout) {
           sessionStorage.removeItem("payment_in_progress");
-          setIsCheckoutLoading(null);
           closeReviewModal();
         }
       }
     };
 
-    // Check on mount if we were mid-checkout (handles fresh page load after back)
     const wasInCheckout = sessionStorage.getItem("payment_in_progress");
     if (wasInCheckout) {
       sessionStorage.removeItem("payment_in_progress");
-      setIsCheckoutLoading(null);
       closeReviewModal();
     }
 
@@ -513,41 +512,6 @@ export default function PricingPage() {
   }, []);
 
   const currentPlans = planType === "solo" ? soloPlans : teamPlans;
-
-  // Handle checkout - redirect to Square payment
-  const handleCheckout = async (plan: string, includeCRM: boolean = false) => {
-    const loadingKey = includeCRM ? `${plan}-crm` : plan;
-    setIsCheckoutLoading(loadingKey);
-
-    try {
-      const response = await fetch("/api/payments/create-checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          plan: plan.toLowerCase(),
-          includeCRM,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.checkoutUrl) {
-        // Mark that we're in checkout so we can recover on back button
-        sessionStorage.setItem("payment_in_progress", "true");
-        // Redirect to Square checkout
-        window.location.href = data.checkoutUrl;
-      } else {
-        alert(data.error || "Unable to process payment. Please try again.");
-        setIsCheckoutLoading(null);
-      }
-    } catch (error) {
-      console.error("Checkout error:", error);
-      alert("Unable to connect to payment service. Please try again.");
-      setIsCheckoutLoading(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-[#161616]">
@@ -1030,8 +994,7 @@ export default function PricingPage() {
 
                   <button
                     onClick={() => openReviewModal(plan.name, false)}
-                    disabled={isCheckoutLoading !== null}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full font-medium transition-all mt-6 disabled:opacity-70 disabled:cursor-not-allowed ${
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full font-medium transition-all mt-6 ${
                       plan.tag === "Most Popular"
                         ? "bg-[#d5b367] text-[#161616] hover:bg-[#c9a555]"
                         : plan.tag === "Best Results" || plan.tag === "Best Value"
@@ -1039,17 +1002,8 @@ export default function PricingPage() {
                         : "bg-white/5 text-white border border-white/10 hover:bg-white/10"
                     }`}
                   >
-                    {isCheckoutLoading === plan.name.toLowerCase() ? (
-                      <>
-                        <IconLoader2 className="w-4 h-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        Claim My Area
-                        <IconArrowUpRight className="w-4 h-4" />
-                      </>
-                    )}
+                    Claim My Area
+                    <IconArrowUpRight className="w-4 h-4" />
                   </button>
 
                   {/* CRM Add-on Section */}
@@ -1070,20 +1024,10 @@ export default function PricingPage() {
                       </p>
                       <button
                         onClick={() => openReviewModal(plan.name, true)}
-                        disabled={isCheckoutLoading !== null}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-[#d5b367]/10 text-[#d5b367] border border-[#d5b367]/30 hover:bg-[#d5b367]/20 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-[#d5b367]/10 text-[#d5b367] border border-[#d5b367]/30 hover:bg-[#d5b367]/20 transition-all"
                       >
-                        {isCheckoutLoading === `${plan.name.toLowerCase()}-crm` ? (
-                          <>
-                            <IconLoader2 className="w-3 h-3 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            Add CRM to this plan
-                            <IconArrowUpRight className="w-3 h-3" />
-                          </>
-                        )}
+                        Add CRM to this plan
+                        <IconArrowUpRight className="w-3 h-3" />
                       </button>
                     </div>
                   )}
@@ -1395,7 +1339,6 @@ export default function PricingPage() {
             if (!plan) return null;
             const planPrice = getPlanPrice(plan.name.toLowerCase(), false);
             const totalPrice = reviewModal.includeCRM ? planPrice + CRM_ADDON_PRICE : planPrice;
-            const isLoading = isCheckoutLoading !== null;
 
             return (
               <motion.div
@@ -1404,7 +1347,7 @@ export default function PricingPage() {
                 exit={{ opacity: 0 }}
                 style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
                 className="bg-black/70 backdrop-blur-sm"
-                onClick={() => !isLoading && closeReviewModal()}
+                onClick={() => closeReviewModal()}
               >
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1416,15 +1359,13 @@ export default function PricingPage() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Close Button */}
-                  {!isLoading && (
-                    <button
-                      onClick={closeReviewModal}
-                      className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors z-10"
-                      aria-label="Close"
-                    >
-                      <IconX className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={closeReviewModal}
+                    className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors z-10"
+                    aria-label="Close"
+                  >
+                    <IconX className="w-4 h-4" />
+                  </button>
                   {/* Plan Header */}
                   <div className="flex items-center gap-3 mb-2">
                     <div className={`w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center ${plan.iconColor}`}>
@@ -1498,41 +1439,37 @@ export default function PricingPage() {
                     </ul>
                   </div>
 
-                  {/* Actions */}
+                  {/* Card Payment Form */}
                   <div className="space-y-3">
-                    <button
-                      onClick={() => {
-                        handleCheckout(reviewModal.planName, reviewModal.includeCRM);
+                    <CardPaymentForm
+                      plan={reviewModal.planName}
+                      includeCRM={reviewModal.includeCRM}
+                      onSuccess={(data) => {
+                        try {
+                          sessionStorage.setItem("onboarding_token", data.accessToken);
+                          sessionStorage.setItem("onboarding_plan", data.plan || "");
+                          sessionStorage.setItem("onboarding_crm", data.includeCRM ? "true" : "false");
+                        } catch {
+                          // Storage may be unavailable
+                        }
+                        const params = new URLSearchParams({
+                          token: data.accessToken,
+                          plan: data.plan || "",
+                          crm: data.includeCRM ? "true" : "false",
+                        });
+                        window.location.href = `/onboarding?${params.toString()}`;
                       }}
-                      disabled={isLoading}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#d5b367] text-[#161616] rounded-full font-semibold hover:bg-[#c9a555] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                      onError={(message) => {
+                        alert(message);
+                      }}
+                    />
+                    <button
+                      onClick={closeReviewModal}
+                      className="w-full px-6 py-3 text-white/50 hover:text-white/80 text-sm transition-colors"
                     >
-                      {isLoading ? (
-                        <>
-                          <IconLoader2 className="w-4 h-4 animate-spin" />
-                          Redirecting to payment...
-                        </>
-                      ) : (
-                        <>
-                          <IconCreditCard className="w-4 h-4" />
-                          Proceed to Payment
-                        </>
-                      )}
+                      Cancel
                     </button>
-                    {!isLoading && (
-                      <button
-                        onClick={closeReviewModal}
-                        className="w-full px-6 py-3 text-white/50 hover:text-white/80 text-sm transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    )}
                   </div>
-
-                  <p className="text-center text-white/30 text-xs mt-4">
-                    <IconShieldCheck className="w-3 h-3 inline mr-1" />
-                    You&apos;ll be redirected to Square for secure payment
-                  </p>
                 </motion.div>
               </motion.div>
             );

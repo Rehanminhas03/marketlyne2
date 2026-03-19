@@ -18,9 +18,11 @@ function PaymentSuccessContent() {
   const [status, setStatus] = useState<VerificationStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Square redirects with these parameters (check alternate param names for resilience)
-  const transactionId = searchParams.get("transactionId") || searchParams.get("transaction_id") || searchParams.get("referenceId");
-  const orderId = searchParams.get("orderId") || searchParams.get("order_id") || searchParams.get("checkoutId");
+  // PayPal redirects with ?token=<order-id>&PayerID=<id>
+  // Also check legacy Square param names for resilience during transition
+  const paypalToken = searchParams.get("token");
+  const transactionId = searchParams.get("PayerID") || searchParams.get("transactionId");
+  const orderId = paypalToken || searchParams.get("orderId") || searchParams.get("order_id");
 
   useEffect(() => {
     const verifyWithRetry = async (id: string, attempts = 3): Promise<Record<string, unknown>> => {
@@ -32,8 +34,8 @@ function PaymentSuccessContent() {
         });
         const data = await response.json();
         if (data.verified) return data;
-        // Wait before retrying (Square may have a delay before order is COMPLETED)
-        if (i < attempts - 1) await new Promise(r => setTimeout(r, 2000));
+        // Exponential backoff: 2s, 4s (PayPal may need time to process the capture)
+        if (i < attempts - 1) await new Promise(r => setTimeout(r, Math.pow(2, i + 1) * 1000));
       }
       return { verified: false };
     };
