@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import NavbarDemo from "@/components/Navbar";
 import ScrollProgress from "@/components/ui/scroll-progress";
@@ -448,6 +448,8 @@ export default function PricingPage() {
 
   const openReviewModal = (planName: string, includeCRM: boolean) => {
     setReviewModal({ isOpen: true, planName, includeCRM });
+    // Push a history state so browser back button closes the modal instead of navigating away
+    window.history.pushState({ modal: "review" }, "");
     // Lock scroll — use position:fixed trick for iOS Safari compatibility
     scrollYRef.current = window.scrollY;
     document.body.style.overflow = "hidden";
@@ -456,15 +458,44 @@ export default function PricingPage() {
     document.body.style.top = `-${scrollYRef.current}px`;
   };
 
-  const closeReviewModal = () => {
-    // Restore scroll position
+  // Core close logic (no history manipulation — used by popstate handler)
+  const closeReviewModalCore = useCallback(() => {
     document.body.style.overflow = "";
     document.body.style.position = "";
     document.body.style.width = "";
     document.body.style.top = "";
     window.scrollTo(0, scrollYRef.current);
     setReviewModal({ isOpen: false, planName: "", includeCRM: false });
-  };
+  }, []);
+
+  // Close modal from UI actions (X, Cancel, overlay, Escape) — also pops the history state
+  const closeReviewModal = useCallback(() => {
+    closeReviewModalCore();
+    // Pop the history state we pushed when opening
+    window.history.back();
+  }, [closeReviewModalCore]);
+
+  // Close modal on browser back button (history already popped by the browser)
+  useEffect(() => {
+    const handlePopState = () => {
+      if (reviewModal.isOpen) {
+        closeReviewModalCore();
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [reviewModal.isOpen, closeReviewModalCore]);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && reviewModal.isOpen) {
+        closeReviewModal();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [reviewModal.isOpen, closeReviewModal]);
 
   const getReviewPlan = () => {
     const allPlans = [...soloPlans, ...teamPlans];
