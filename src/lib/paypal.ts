@@ -154,6 +154,67 @@ interface PaymentVerificationResult {
   customerEmail?: string;
   totalAmount: number;
   orderId: string;
+  error?: string;
+}
+
+/**
+ * Parse PayPal SDK error to extract the specific issue code and description.
+ */
+function parsePayPalError(error: unknown): { issue: string; description: string; raw: string } {
+  const raw = error instanceof Error ? error.message : String(error);
+
+  // PayPal SDK errors often contain JSON with details array
+  try {
+    // Try to parse from error body/message
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const detail = parsed.details?.[0] || {};
+      return {
+        issue: detail.issue || parsed.name || "UNKNOWN",
+        description: detail.description || parsed.message || raw,
+        raw,
+      };
+    }
+  } catch {
+    // Not JSON, continue
+  }
+
+  // Check for known error patterns in the string
+  if (raw.includes("INSTRUMENT_DECLINED")) return { issue: "INSTRUMENT_DECLINED", description: "The card was declined.", raw };
+  if (raw.includes("ORDER_NOT_APPROVED")) return { issue: "ORDER_NOT_APPROVED", description: "The order was not approved.", raw };
+  if (raw.includes("PERMISSION_DENIED")) return { issue: "PERMISSION_DENIED", description: "Card processing not enabled.", raw };
+  if (raw.includes("PAYER_ACTION_REQUIRED")) return { issue: "PAYER_ACTION_REQUIRED", description: "Additional authentication required.", raw };
+  if (raw.includes("ORDER_ALREADY_CAPTURED")) return { issue: "ORDER_ALREADY_CAPTURED", description: "This payment was already processed.", raw };
+  if (raw.includes("UNPROCESSABLE_ENTITY")) return { issue: "UNPROCESSABLE_ENTITY", description: "Payment could not be processed.", raw };
+
+  return { issue: "UNKNOWN", description: raw, raw };
+}
+
+/**
+ * Map PayPal issue codes to user-friendly error messages.
+ */
+function getUserFriendlyError(issue: string): string {
+  switch (issue) {
+    case "INSTRUMENT_DECLINED":
+      return "Your card was declined. Please try a different card or payment method.";
+    case "ORDER_NOT_APPROVED":
+      return "The payment was not approved. Please try again.";
+    case "PERMISSION_DENIED":
+      return "Card payments are not currently available. Please use PayPal or contact support.";
+    case "PAYER_ACTION_REQUIRED":
+      return "Your bank requires additional verification. Please try again or use a different card.";
+    case "ORDER_ALREADY_CAPTURED":
+      return "This payment has already been processed.";
+    case "UNPROCESSABLE_ENTITY":
+      return "Payment could not be processed. Please check your card details and try again.";
+    case "CARD_EXPIRED":
+      return "Your card has expired. Please use a different card.";
+    case "INVALID_SECURITY_CODE":
+      return "Invalid CVV/security code. Please check and try again.";
+    default:
+      return "Payment failed. Please try again or use a different payment method.";
+  }
 }
 
 /**
@@ -455,19 +516,30 @@ export const captureAndVerifyOrder = async (orderId: string): Promise<PaymentVer
       });
       order = captureResponse.result;
     } catch (captureError: unknown) {
+      const parsed = parsePayPalError(captureError);
+      console.error(`[PayPal] Capture failed for order ${orderId}: issue=${parsed.issue}, description=${parsed.description}`);
+      console.error(`[PayPal] Full error: ${parsed.raw}`);
+
       // If already captured, fetch the order instead of failing
-      const errMessage = captureError instanceof Error ? captureError.message : String(captureError);
-      if (errMessage.includes("ORDER_ALREADY_CAPTURED") || errMessage.includes("UNPROCESSABLE_ENTITY")) {
+      if (parsed.issue === "ORDER_ALREADY_CAPTURED") {
         console.warn(`[PayPal] Order ${orderId} already captured — fetching existing order`);
         const getResponse = await ordersController.getOrder({ id: orderId });
         order = getResponse.result;
       } else {
-        throw captureError;
+        // Return with user-friendly error message
+        return {
+          verified: false,
+          plan: "",
+          includeCRM: false,
+          totalAmount: 0,
+          orderId,
+          error: getUserFriendlyError(parsed.issue),
+        };
       }
     }
 
     if (!order) {
-      return { verified: false, plan: "", includeCRM: false, totalAmount: 0, orderId };
+      return { verified: false, plan: "", includeCRM: false, totalAmount: 0, orderId, error: "Unable to retrieve order details." };
     }
 
     const isCompleted = order.status === "COMPLETED";
@@ -512,8 +584,9 @@ export const captureAndVerifyOrder = async (orderId: string): Promise<PaymentVer
 
     return { verified: isCompleted, plan, includeCRM, customerEmail, totalAmount, orderId };
   } catch (error) {
-    console.error("[PayPal] Error capturing order:", error);
-    return { verified: false, plan: "", includeCRM: false, totalAmount: 0, orderId };
+    const parsed = parsePayPalError(error);
+    console.error(`[PayPal] Error capturing order ${orderId}: issue=${parsed.issue}, description=${parsed.description}`);
+    return { verified: false, plan: "", includeCRM: false, totalAmount: 0, orderId, error: getUserFriendlyError(parsed.issue) };
   }
 };
 

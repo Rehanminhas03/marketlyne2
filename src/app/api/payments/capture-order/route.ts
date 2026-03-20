@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (!result.verified) {
       return NextResponse.json(
-        { verified: false, error: "Payment not completed." },
+        { verified: false, error: result.error || "Payment not completed." },
         { status: 400 }
       );
     }
