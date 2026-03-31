@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 
-// Initialize Google Sheets API client
+const SHEET_NAME = "Client Database";
+
 const getGoogleSheetsClient = async () => {
   const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
   const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -17,14 +18,9 @@ const getGoogleSheetsClient = async () => {
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 
-  const sheets = google.sheets({ version: "v4", auth });
-  return sheets;
+  return google.sheets({ version: "v4", auth });
 };
 
-/**
- * Append a row of data to the Google Sheet
- * @param data - Array of values to append as a row
- */
 export const appendToGoogleSheet = async (data: (string | number | boolean)[]) => {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -34,24 +30,39 @@ export const appendToGoogleSheet = async (data: (string | number | boolean)[]) =
 
   const sheets = await getGoogleSheetsClient();
 
-  // Append to the first sheet (Sheet1), starting from row 2 (row 1 is headers)
-  const response = await sheets.spreadsheets.values.append({
+  // Read column A to find the last row that actually has data (ignores empty rows)
+  const colA = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: "Sheet1!A:R", // Columns A through R (18 columns for all our data)
+    range: `'${SHEET_NAME}'!A:A`,
+  });
+
+  const rows = colA.data.values || [];
+  // Find last non-empty row index (0-based), then convert to 1-based sheet row
+  let lastDataRow = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i] && rows[i][0] && String(rows[i][0]).trim() !== "") {
+      lastDataRow = i + 1; // convert to 1-based
+      break;
+    }
+  }
+  const nextRow = lastDataRow + 1;
+
+  console.log(`Writing to row ${nextRow} (last data row was ${lastDataRow})`);
+
+  // Write directly to the exact next row
+  const response = await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${SHEET_NAME}'!A${nextRow}:R${nextRow}`,
     valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
     requestBody: {
-      values: [data],
+      values: [data.map(String)],
     },
   });
 
+  console.log("Written to range:", response.data.updatedRange);
   return response.data;
 };
 
-/**
- * Get all rows from the Google Sheet
- * @returns Array of rows
- */
 export const getGoogleSheetData = async () => {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
@@ -63,7 +74,7 @@ export const getGoogleSheetData = async () => {
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: "Sheet1!A:R",
+    range: `'${SHEET_NAME}'!A:R`,
   });
 
   return response.data.values || [];

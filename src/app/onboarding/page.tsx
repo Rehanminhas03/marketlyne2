@@ -152,30 +152,30 @@ function OnboardingContent() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [verificationError, setVerificationError] = useState("");
 
-  // Verify payment token on mount
+  // PAYMENT VERIFICATION COMMENTED OUT — onboarding is now open access
+  useEffect(() => {
+    setIsAuthorized(true);
+    setIsVerifying(false);
+  }, []);
+
+  /* ORIGINAL TOKEN VERIFICATION (commented out)
   useEffect(() => {
     const verifyToken = async () => {
-      // If no token, user hasn't paid - redirect to pricing
       if (!tokenFromUrl) {
         setIsVerifying(false);
         setIsAuthorized(false);
         setVerificationError("Payment required to access onboarding.");
         return;
       }
-
       try {
-        // Verify the token with our API
         const response = await fetch("/api/payments/verify-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: tokenFromUrl }),
         });
-
         const data = await response.json();
-
         if (data.valid) {
           setIsAuthorized(true);
-          // Set form data from token payload
           if (data.payload?.plan) {
             setFormData(prev => ({ ...prev, selectedPlan: data.payload.plan }));
           }
@@ -189,9 +189,9 @@ function OnboardingContent() {
         setIsVerifying(false);
       }
     };
-
     verifyToken();
   }, [tokenFromUrl]);
+  */
 
   // Update plan from URL when component mounts (fallback for authorized users)
   useEffect(() => {
@@ -250,15 +250,92 @@ function OnboardingContent() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const validateSection = (section: number): boolean => {
+    const newErrors: Partial<FormData> = {};
+
+    if (section === 0) {
+      if (!formData.firstName.trim()) newErrors.firstName = "First name is required";
+      if (!formData.lastName.trim()) newErrors.lastName = "Last name is required";
+      if (!formData.email.trim()) {
+        newErrors.email = "Email is required";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        newErrors.email = "Please enter a valid email";
+      }
+      if (!formData.phone.trim()) newErrors.phone = "Phone is required";
+      if (!formData.mls.trim()) newErrors.mls = "MLS is required";
+      if (!formData.licenseNumber.trim()) newErrors.licenseNumber = "License number is required";
+    }
+
+    if (section === 1) {
+      if (!formData.city.trim()) newErrors.city = "City is required";
+      if (!formData.state) newErrors.state = "State is required";
+    }
+
+    if (section === 2) {
+      if (!formData.primaryArea.trim()) newErrors.primaryArea = "Primary area is required";
+      if (!formData.primaryRadius) newErrors.primaryRadius = "Primary radius is required";
+    }
+
+    if (section === 3) {
+      if (!formData.selectedPlan) newErrors.selectedPlan = "Please select a plan";
+    }
+
+    if (section === 4) {
+      if (!formData.billingAddress.trim()) newErrors.billingAddress = "Billing address is required";
+      if (!formData.shippingAddress.trim() && !formData.sameAsBilling) {
+        newErrors.shippingAddress = "Shipping address is required";
+      }
+    }
+
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      setTimeout(() => {
+        const firstError = document.querySelector(".border-red-400");
+        if (firstError) firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+      return false;
+    }
+    return true;
+  };
+
+  // Map of field names to the section index they belong to
+  const fieldSectionMap: Record<string, number> = {
+    firstName: 0, lastName: 0, email: 0, phone: 0, mls: 0, licenseNumber: 0,
+    city: 1, state: 1,
+    primaryArea: 2, primaryRadius: 2,
+    selectedPlan: 3,
+    billingAddress: 4, shippingAddress: 4,
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
-      // Scroll to first error
-      const firstError = document.querySelector(".text-red-400");
-      if (firstError) {
-        firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Find the first field with an error and navigate to that section
+      const newErrors: Partial<FormData> = {};
+      if (!formData.firstName.trim()) newErrors.firstName = "required";
+      if (!formData.lastName.trim()) newErrors.lastName = "required";
+      if (!formData.email.trim()) newErrors.email = "required";
+      if (!formData.phone.trim()) newErrors.phone = "required";
+      if (!formData.mls.trim()) newErrors.mls = "required";
+      if (!formData.licenseNumber.trim()) newErrors.licenseNumber = "required";
+      if (!formData.city.trim()) newErrors.city = "required";
+      if (!formData.state) newErrors.state = "required";
+      if (!formData.primaryArea.trim()) newErrors.primaryArea = "required";
+      if (!formData.primaryRadius) newErrors.primaryRadius = "required";
+      if (!formData.selectedPlan) newErrors.selectedPlan = "required";
+      if (!formData.billingAddress.trim()) newErrors.billingAddress = "required";
+
+      const firstErrorField = Object.keys(newErrors)[0];
+      if (firstErrorField && fieldSectionMap[firstErrorField] !== undefined) {
+        setCurrentSection(fieldSectionMap[firstErrorField]);
       }
+
+      // Scroll to first visible error after section change
+      setTimeout(() => {
+        const firstError = document.querySelector(".border-red-400");
+        if (firstError) firstError.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
       return;
     }
 
@@ -274,11 +351,12 @@ function OnboardingContent() {
           ...formData,
           shippingAddress: formData.sameAsBilling ? formData.billingAddress : formData.shippingAddress,
           includeCRM: crmFromUrl,
-          token: tokenFromUrl,
+          // token: tokenFromUrl, // PAYMENT COMMENTED OUT
         }),
       });
 
       const data = await response.json();
+      console.log("Onboarding submission result:", { sheetSaved: data.sheetSaved, sheetError: data.sheetError, message: data.message });
 
       if (!response.ok) {
         alert(data.error || "There was an error submitting your form. Please try again.");
@@ -957,7 +1035,7 @@ function OnboardingContent() {
             <div className="flex items-center justify-between mt-10 pt-8 border-t border-white/10">
               <button
                 type="button"
-                onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+                onClick={() => { setErrors({}); setCurrentSection(prev => Math.max(0, prev - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
                   currentSection === 0
                     ? "opacity-50 cursor-not-allowed bg-white/5 text-white/50"
@@ -972,7 +1050,12 @@ function OnboardingContent() {
               {currentSection < sections.length - 1 ? (
                 <button
                   type="button"
-                  onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
+                  onClick={() => {
+                    if (validateSection(currentSection)) {
+                      setCurrentSection(prev => Math.min(sections.length - 1, prev + 1));
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
                   className="flex items-center gap-2 px-6 py-3 bg-[#d5b367] text-[#0a0a0a] rounded-full font-medium hover:bg-[#c9a555] transition-all"
                 >
                   Next

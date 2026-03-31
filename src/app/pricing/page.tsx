@@ -1,8 +1,10 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect } from "react";
+// import { useRef, useCallback } from "react"; // PAYMENT COMMENTED OUT
+// import { createPortal } from "react-dom"; // PAYMENT COMMENTED OUT
+import { useRouter } from "next/navigation";
 import NavbarDemo from "@/components/Navbar";
 import ScrollProgress from "@/components/ui/scroll-progress";
 import Footer from "@/components/sections/Footer";
@@ -46,12 +48,12 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import siteConfig from "@/config/site.json";
-import { getPlanPrice, formatPrice, CRM_ADDON_PRICE } from "@/config/prices";
-import dynamic from "next/dynamic";
+// import { getPlanPrice, formatPrice, CRM_ADDON_PRICE } from "@/config/prices"; // PAYMENT COMMENTED OUT
+// import dynamic from "next/dynamic"; // PAYMENT COMMENTED OUT
 
-const CardPaymentForm = dynamic(() => import("@/components/CardPaymentForm"), {
-  ssr: false,
-});
+// const CardPaymentForm = dynamic(() => import("@/components/CardPaymentForm"), {
+//   ssr: false,
+// });
 
 // Logo data for marquee
 const brokerageLogos = [
@@ -428,11 +430,13 @@ const faqItems = [
 ];
 
 export default function PricingPage() {
+  const router = useRouter();
   const [planType, setPlanType] = useState<"solo" | "team">("solo");
   const [openAccordion, setOpenAccordion] = useState<number>(0);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  /* PAYMENT COMMENTED OUT
   const [reviewModal, setReviewModal] = useState<{
     isOpen: boolean;
     planName: string;
@@ -501,6 +505,7 @@ export default function PricingPage() {
     const allPlans = [...soloPlans, ...teamPlans];
     return allPlans.find(p => p.name.toLowerCase() === reviewModal.planName.toLowerCase());
   };
+  END PAYMENT COMMENTED OUT */
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -509,38 +514,7 @@ export default function PricingPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Reset loading state when user navigates back (bfcache restore or visibility change)
-  useEffect(() => {
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        closeReviewModal();
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        const wasInCheckout = sessionStorage.getItem("payment_in_progress");
-        if (wasInCheckout) {
-          sessionStorage.removeItem("payment_in_progress");
-          closeReviewModal();
-        }
-      }
-    };
-
-    const wasInCheckout = sessionStorage.getItem("payment_in_progress");
-    if (wasInCheckout) {
-      sessionStorage.removeItem("payment_in_progress");
-      closeReviewModal();
-    }
-
-    window.addEventListener("pageshow", handlePageShow);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("pageshow", handlePageShow);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // PAYMENT COMMENTED OUT: bfcache/visibility reset for payment modal removed
 
   const currentPlans = planType === "solo" ? soloPlans : teamPlans;
 
@@ -1024,7 +998,7 @@ export default function PricingPage() {
                   </div>
 
                   <button
-                    onClick={() => openReviewModal(plan.name, false)}
+                    onClick={() => router.push(`/onboarding?plan=${plan.name.toLowerCase()}`)}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full font-medium transition-all mt-6 ${
                       plan.tag === "Most Popular"
                         ? "bg-[#d5b367] text-[#161616] hover:bg-[#c9a555]"
@@ -1054,7 +1028,7 @@ export default function PricingPage() {
                         Full GoHighLevel CRM access with unlimited contacts, automation & more.
                       </p>
                       <button
-                        onClick={() => openReviewModal(plan.name, true)}
+                        onClick={() => router.push(`/onboarding?plan=${plan.name.toLowerCase()}&crm=true`)}
                         className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-[#d5b367]/10 text-[#d5b367] border border-[#d5b367]/30 hover:bg-[#d5b367]/20 transition-all"
                       >
                         Add CRM to this plan
@@ -1362,152 +1336,10 @@ export default function PricingPage() {
         </section>
       </main>
 
-      {/* Order Review Modal - rendered via portal to avoid CSS containment issues */}
-      {portalRoot && createPortal(
-        <AnimatePresence>
-          {reviewModal.isOpen && (() => {
-            const plan = getReviewPlan();
-            if (!plan) return null;
-            const planPrice = getPlanPrice(plan.name.toLowerCase(), false);
-            const totalPrice = reviewModal.includeCRM ? planPrice + CRM_ADDON_PRICE : planPrice;
-
-            return (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
-                className="bg-black/70 backdrop-blur-sm"
-                onClick={() => closeReviewModal()}
-              >
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="relative bg-[#161616] border border-white/10 rounded-2xl p-4 sm:p-8 max-w-md w-full shadow-2xl overflow-y-auto"
-                  style={{ maxHeight: "calc(100dvh - 2rem)" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* Close Button */}
-                  <button
-                    onClick={closeReviewModal}
-                    className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors z-10"
-                    aria-label="Close"
-                  >
-                    <IconX className="w-4 h-4" />
-                  </button>
-                  {/* Plan Header */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center ${plan.iconColor}`}>
-                      <plan.icon className="w-6 h-6" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-xl font-bold text-white">{plan.name} Plan</h3>
-                        {plan.tag && (
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                            plan.tag === "Most Popular"
-                              ? "bg-[#d5b367]/20 text-[#d5b367]"
-                              : plan.tag === "Best Results" || plan.tag === "Best Value"
-                              ? "bg-emerald-500/20 text-emerald-400"
-                              : "bg-blue-500/20 text-blue-400"
-                          }`}>
-                            {plan.tag}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-white/50 text-sm">{plan.tagline}</p>
-                    </div>
-                  </div>
-
-                  {/* Best For */}
-                  <p className="text-white/40 text-xs mb-3 sm:mb-6 pl-[60px]">Best for: {plan.bestFor}</p>
-
-                  {/* Price Breakdown */}
-                  <div className="bg-white/5 rounded-xl p-4 sm:p-5 mb-4 sm:mb-6 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-white/70">{plan.name} Plan</span>
-                      <div className="flex items-center gap-2">
-                        {plan.originalPrice && (
-                          <span className="text-white/30 text-sm line-through">{plan.originalPrice}</span>
-                        )}
-                        <span className="text-white font-medium">{formatPrice(planPrice)}</span>
-                      </div>
-                    </div>
-                    {reviewModal.includeCRM && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-white/70">CRM Add-on (GoHighLevel)</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/30 text-sm line-through">$197</span>
-                          <span className="text-white font-medium">{formatPrice(CRM_ADDON_PRICE)}</span>
-                        </div>
-                      </div>
-                    )}
-                    <div className="border-t border-white/10 pt-3 flex items-center justify-between">
-                      <span className="text-white font-semibold">Total</span>
-                      <span className="text-[#d5b367] text-xl font-bold">{formatPrice(totalPrice)}</span>
-                    </div>
-                    <p className="text-white/40 text-xs">One-time payment &bull; No recurring fees</p>
-                  </div>
-
-                  {/* All Features */}
-                  <div className="mb-4 sm:mb-6">
-                    <p className="text-sm font-medium text-white/70 mb-3">What&apos;s Included:</p>
-                    <ul className="space-y-2 max-h-[150px] sm:max-h-[200px] overflow-y-auto pr-1">
-                      {plan.features.map((feature, idx) => (
-                        <li key={idx} className="flex items-center gap-2 text-sm text-white/60">
-                          <IconCheck className={`w-4 h-4 flex-shrink-0 ${feature.includes("FREE CRM") ? "text-emerald-400" : "text-[#d5b367]"}`} />
-                          <span className={feature.includes("FREE CRM") ? "text-emerald-400 font-medium" : ""}>{feature}</span>
-                        </li>
-                      ))}
-                      {reviewModal.includeCRM && (
-                        <li className="flex items-center gap-2 text-sm text-emerald-400 font-medium">
-                          <IconCheck className="w-4 h-4 flex-shrink-0 text-emerald-400" />
-                          CRM Add-on (GoHighLevel)
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-
-                  {/* Card Payment Form */}
-                  <div className="space-y-3">
-                    <CardPaymentForm
-                      plan={reviewModal.planName}
-                      includeCRM={reviewModal.includeCRM}
-                      onSuccess={(data) => {
-                        try {
-                          sessionStorage.setItem("onboarding_token", data.accessToken);
-                          sessionStorage.setItem("onboarding_plan", data.plan || "");
-                          sessionStorage.setItem("onboarding_crm", data.includeCRM ? "true" : "false");
-                        } catch {
-                          // Storage may be unavailable
-                        }
-                        const params = new URLSearchParams({
-                          token: data.accessToken,
-                          plan: data.plan || "",
-                          crm: data.includeCRM ? "true" : "false",
-                        });
-                        window.location.href = `/onboarding?${params.toString()}`;
-                      }}
-                      onError={(message) => {
-                        alert(message);
-                      }}
-                    />
-                    <button
-                      onClick={closeReviewModal}
-                      className="w-full px-6 py-3 text-white/50 hover:text-white/80 text-sm transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            );
-          })()}
-        </AnimatePresence>,
-        portalRoot
-      )}
+      {/* PAYMENT MODAL COMMENTED OUT
+      Order Review Modal with PayPal/Card payment integration has been disabled.
+      Clicking "Claim My Area" now navigates directly to the onboarding form.
+      */}
 
       <Footer />
     </div>

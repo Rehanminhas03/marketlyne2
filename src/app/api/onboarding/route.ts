@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { appendToGoogleSheet } from "@/lib/google-sheets";
-import { verifyAccessToken } from "@/lib/payment-tokens";
+// import { verifyAccessToken } from "@/lib/payment-tokens"; // PAYMENT COMMENTED OUT
 import { getPlanDisplayName, formatPrice, getPlanPrice } from "@/config/prices";
 
-// Track consumed tokens to prevent duplicate onboarding submissions
-// Uses JWT jti (unique ID) — survives within a warm serverless instance
-const consumedTokens = new Set<string>();
+// PAYMENT COMMENTED OUT: Token deduplication disabled
+// const consumedTokens = new Set<string>();
 
 // Build plan display string dynamically from centralized pricing
 const getPlanLabel = (plan: string, includeCRM: boolean = false): string => {
@@ -31,7 +30,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // --- Payment token verification (prevents bypassing payment) ---
+    // PAYMENT VERIFICATION COMMENTED OUT — onboarding is now open access
+    /* Original token verification:
     const { token } = body;
     if (!token || typeof token !== "string") {
       return NextResponse.json(
@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-
     const tokenResult = verifyAccessToken(token);
     if (!tokenResult.valid) {
       return NextResponse.json(
@@ -47,18 +46,16 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-
-    // --- Duplicate submission protection (same token can't onboard twice) ---
     const jti = (tokenResult.payload as unknown as Record<string, unknown>)?.jti as string | undefined;
     const orderId = tokenResult.payload?.orderId;
     const dedupeKey = jti || orderId || token;
-
     if (consumedTokens.has(dedupeKey)) {
       return NextResponse.json(
         { error: "This payment has already been used for onboarding. If you need help, contact support@marketlyne.com." },
         { status: 409 }
       );
     }
+    */
 
     const {
       firstName,
@@ -157,17 +154,18 @@ export async function POST(request: NextRequest) {
       includeCRM ? "Yes" : "No",
     ];
 
-    // Mark token as consumed BEFORE saving — prevents race condition double-submit
-    consumedTokens.add(dedupeKey);
+    // PAYMENT COMMENTED OUT: consumedTokens.add(dedupeKey);
 
     // Append to Google Sheets (if configured)
     let sheetSaved = false;
+    let sheetErrorMsg = "";
     try {
-      await appendToGoogleSheet(sheetData);
+      const sheetResult = await appendToGoogleSheet(sheetData);
       sheetSaved = true;
+      console.log("Google Sheets write success. Updated range:", JSON.stringify(sheetResult));
     } catch (sheetError) {
-      console.error("Google Sheets error:", sheetError instanceof Error ? sheetError.message : sheetError);
-      console.error("Google Sheets full error:", JSON.stringify(sheetError, null, 2));
+      sheetErrorMsg = sheetError instanceof Error ? sheetError.message : JSON.stringify(sheetError);
+      console.error("Google Sheets error:", sheetErrorMsg);
       // Continue with email even if Google Sheets fails
     }
 
@@ -371,6 +369,7 @@ export async function POST(request: NextRequest) {
           ? "Onboarding submitted successfully"
           : "Onboarding submitted but data backup encountered an issue. Our team has been notified.",
         sheetSaved,
+        sheetError: sheetSaved ? undefined : sheetErrorMsg,
       },
       { status: 200 }
     );
